@@ -10,14 +10,16 @@ const fs = require("fs");
 function timeToSeconds(timeStr) {
   timeStr = timeStr.trim().toLowerCase();
   const period = timeStr.includes("pm") ? "pm" : "am";
-  const timePart = timeStr.replace("am", "").replace("pm", "").trim();
-  const [h, m, s] = timePart.split(":").map(Number);
+  const timePart = timeStr.replace("pm", "").replace("am", "").trim();
+  const parts = timePart.split(":");
+  let h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const s = parseInt(parts[2], 10);
 
-  let hours = h;
-  if (period === "am" && h === 12) hours = 0;
-  if (period === "pm" && h !== 12) hours = h + 12;
+  if (period === "am" && h === 12) h = 0;
+  if (period === "pm" && h !== 12) h += 12;
 
-  return hours * 3600 + m * 60 + s;
+  return h * 3600 + m * 60 + s;
 }
 
 /**
@@ -50,8 +52,10 @@ function durationToSeconds(durationStr) {
  */
 function getShiftDuration(startTime, endTime) {
   const startSec = timeToSeconds(startTime);
-  const endSec = timeToSeconds(endTime);
-  const diff = endSec - startSec;
+  let endSec = timeToSeconds(endTime);
+  let diff = endSec - startSec;
+  // Handle overnight shifts (crosses midnight)
+  if (diff < 0) diff += 24 * 3600;
   return secondsToHMS(diff);
 }
 
@@ -69,21 +73,21 @@ function getIdleTime(startTime, endTime) {
   const startSec = timeToSeconds(startTime);
   const endSec = timeToSeconds(endTime);
 
-  const deliveryStart = 8 * 3600;   // 8:00 AM in seconds
-  const deliveryEnd = 22 * 3600;    // 10:00 PM in seconds
+  const deliveryStart = 8 * 3600;   // 8:00 AM
+  const deliveryEnd = 22 * 3600;    // 10:00 PM
 
   let idleSec = 0;
 
-  // Idle before delivery hours
+  // Idle BEFORE 8:00 AM
   if (startSec < deliveryStart) {
-    const preIdle = Math.min(deliveryStart, endSec) - startSec;
-    if (preIdle > 0) idleSec += preIdle;
+    const preEnd = Math.min(endSec, deliveryStart);
+    idleSec += preEnd - startSec;
   }
 
-  // Idle after delivery hours
+  // Idle AFTER 10:00 PM
   if (endSec > deliveryEnd) {
-    const postIdle = endSec - Math.max(deliveryEnd, startSec);
-    if (postIdle > 0) idleSec += postIdle;
+    const postStart = Math.max(startSec, deliveryEnd);
+    idleSec += endSec - postStart;
   }
 
   return secondsToHMS(idleSec);
